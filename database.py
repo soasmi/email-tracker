@@ -44,9 +44,17 @@ class TrackingEvent(Base):
     )
 
     def to_dict(self):
+        ts = self.timestamp
+        ts_str = None
+        if ts:
+            # If timestamp is naive (from SQLite), attach UTC timezone so frontend parses it accurately
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            ts_str = ts.isoformat()
+
         return {
             "id": self.id,
-            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+            "timestamp": ts_str,
             "campaign_id": self.campaign_id,
             "recipient": self.recipient,
             "subject": self.subject or "",

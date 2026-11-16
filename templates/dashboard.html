@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenPixel — Minimalist Email Tracker</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .pulse-dot {
+      box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+      animation: pulsing 1.8s infinite cubic-bezier(0.66, 0, 0, 1);
+    }
+    @keyframes pulsing {
+      to { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased selection:bg-indigo-500 selection:text-white">
+
+  <!-- Header -->
+  <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20 text-white">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+          </svg>
+        </div>
+        <div>
+          <span class="font-bold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">OpenPixel</span>
+          <span class="text-xs px-2 py-0.5 ml-2 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-medium">Free 24/7 Service</span>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <div class="hidden sm:flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-full font-medium">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-dot"></span>
+          Endpoint Live (/tracker.gif)
+        </div>
+        
+        <div class="flex items-center gap-2">
+          <select id="autoRefreshInterval" onchange="updateRefreshTimer()" class="bg-slate-800 border border-slate-700 text-xs rounded-lg px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-indigo-500">
+            <option value="0">Auto-refresh: Off</option>
+            <option value="5000" selected>Auto-refresh: 5s</option>
+            <option value="15000">Auto-refresh: 15s</option>
+            <option value="30000">Auto-refresh: 30s</option>
+          </select>
+          <button onclick="fetchData()" class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition border border-slate-700 hover:text-white" title="Refresh Now">
+            <svg id="refreshIcon" class="w-4 h-4 transition-transform duration-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+          </button>
+          <a href="/api/export" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition">
+            <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            Export CSV
+          </a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+    <!-- KPI Metric Cards -->
+    <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 relative overflow-hidden group hover:border-slate-700 transition">
+        <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Opens</div>
+        <div class="mt-2 text-3xl font-bold tracking-tight text-white flex items-baseline gap-2">
+          <span id="metricTotalOpens">0</span>
+        </div>
+        <div class="mt-1 text-xs text-slate-500">All recorded pixel hits</div>
+        <div class="absolute right-4 bottom-4 w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center text-indigo-400 group-hover:scale-110 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          </svg>
+        </div>
+      </div>
+
+      <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 relative overflow-hidden group hover:border-slate-700 transition">
+        <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Unique Recipients</div>
+        <div class="mt-2 text-3xl font-bold tracking-tight text-emerald-400 flex items-baseline gap-2">
+          <span id="metricUniqueRecipients">0</span>
+        </div>
+        <div class="mt-1 text-xs text-slate-500">Distinct contacts tracked</div>
+        <div class="absolute right-4 bottom-4 w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-400 group-hover:scale-110 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+          </svg>
+        </div>
+      </div>
+
+      <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 relative overflow-hidden group hover:border-slate-700 transition">
+        <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Active Campaigns</div>
+        <div class="mt-2 text-3xl font-bold tracking-tight text-violet-400 flex items-baseline gap-2">
+          <span id="metricCampaigns">0</span>
+        </div>
+        <div class="mt-1 text-xs text-slate-500">Campaign categories</div>
+        <div class="absolute right-4 bottom-4 w-10 h-10 bg-violet-500/10 rounded-xl flex items-center justify-center text-violet-400 group-hover:scale-110 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+          </svg>
+        </div>
+      </div>
+
+      <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 relative overflow-hidden group hover:border-slate-700 transition">
+        <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Opens (Last 24h)</div>
+        <div class="mt-2 text-3xl font-bold tracking-tight text-amber-400 flex items-baseline gap-2">
+          <span id="metricOpens24h">0</span>
+        </div>
+        <div class="mt-1 text-xs text-slate-500">Recent reader engagement</div>
+        <div class="absolute right-4 bottom-4 w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-400 group-hover:scale-110 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tracking Pixel Generator Tool -->
+    <section class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 relative shadow-xl">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-800/80">
+        <div>
+          <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+            <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            Generate Tracking Pixel
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">Configure your email parameters to produce an invisible 1x1 GIF tracking embed.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="testPixelLoad()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 transition">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Send Test Ping Now
+          </button>
+        </div>
+      </div>
+
+      <!-- Generator Inputs -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1.5">Campaign Name / Tag</label>
+          <input type="text" id="inputCampaign" value="newsletter_welcome" oninput="updateGeneratedCode()" placeholder="e.g. cold_outreach_q1" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1.5">Recipient Identifier / Email</label>
+          <input type="text" id="inputRecipient" value="lead@example.com" oninput="updateGeneratedCode()" placeholder="e.g. client@company.com" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1.5">Subject / Note (Optional)</label>
+          <input type="text" id="inputSubject" value="Follow-up on proposal" oninput="updateGeneratedCode()" placeholder="e.g. Partnership discussion" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500">
+        </div>
+      </div>
+
+      <div class="mt-4">
+        <label class="block text-xs font-medium text-slate-300 mb-1.5">Tracker Host Base URL</label>
+        <div class="flex items-center gap-2">
+          <input type="text" id="inputBaseUrl" oninput="updateGeneratedCode()" class="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-300 focus:outline-none focus:border-indigo-500" placeholder="https://your-service.onrender.com">
+          <button onclick="resetBaseUrl()" class="px-2.5 py-2 text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-400 hover:text-white transition" title="Reset to current browser domain">
+            Reset to current URL
+          </button>
+        </div>
+        <p class="text-[11px] text-slate-500 mt-1">When deployed on Render or PythonAnywhere, ensure this URL starts with <code class="text-indigo-400">https://</code> so email clients load it securely.</p>
+      </div>
+
+      <!-- Generated Code Tabs -->
+      <div class="mt-6 space-y-4">
+        <div>
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-1.5">
+            <span class="font-medium text-slate-300">1. HTML Embed Code (Paste at the bottom of your email HTML body)</span>
+            <button onclick="copyToClipboard('htmlSnippet', 'htmlCopyBtn')" id="htmlCopyBtn" class="flex items-center gap-1 text-indigo-400 hover:text-indigo-300 font-medium">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+              <span>Copy HTML</span>
+            </button>
+          </div>
+          <div class="relative bg-slate-950 rounded-xl p-3 border border-slate-800 font-mono text-xs text-indigo-300 select-all break-all overflow-x-auto" id="htmlSnippet">
+            <!-- Populated via JS -->
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <div class="flex items-center justify-between text-xs text-slate-400 mb-1.5">
+              <span class="font-medium text-slate-300">2. Markdown Embed (For Notion, Substack, etc.)</span>
+              <button onclick="copyToClipboard('markdownSnippet', 'mdCopyBtn')" id="mdCopyBtn" class="flex items-center gap-1 text-indigo-400 hover:text-indigo-300 font-medium">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                <span>Copy</span>
+              </button>
+            </div>
+            <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-xs text-slate-300 select-all break-all overflow-x-auto" id="markdownSnippet">
+              <!-- Populated via JS -->
+            </div>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between text-xs text-slate-400 mb-1.5">
+              <span class="font-medium text-slate-300">3. Direct Image URL</span>
+              <button onclick="copyToClipboard('urlSnippet', 'urlCopyBtn')" id="urlCopyBtn" class="flex items-center gap-1 text-indigo-400 hover:text-indigo-300 font-medium">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                <span>Copy</span>
+              </button>
+            </div>
+            <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-xs text-slate-300 select-all break-all overflow-x-auto" id="urlSnippet">
+              <!-- Populated via JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Open Events Table Section -->
+    <section class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+            <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Live Email Open Feed
+          </h2>
+          <p class="text-xs text-slate-400 mt-0.5">Capturing exact timestamp, IP address, device, and email client.</p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <!-- Campaign Filter -->
+          <select id="filterCampaign" onchange="renderTable()" class="bg-slate-950 border border-slate-700 text-xs rounded-lg px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-indigo-500">
+            <option value="">All Campaigns</option>
+          </select>
+          <!-- Search Box -->
+          <div class="relative">
+            <input type="text" id="searchInput" oninput="renderTable()" placeholder="Search recipient, IP, OS..." class="bg-slate-950 border border-slate-700 text-xs rounded-lg pl-8 pr-3 py-1.5 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 w-44 sm:w-56">
+            <svg class="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+          <!-- Clear Button -->
+          <button onclick="confirmClearLogs()" class="px-2.5 py-1.5 text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg border border-rose-500/20 transition">
+            Clear Logs
+          </button>
+        </div>
+      </div>
+
+      <!-- Events Table -->
+      <div class="overflow-x-auto rounded-xl border border-slate-800">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-950/80 text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-800">
+            <tr>
+              <th scope="col" class="py-3 px-4">Time (UTC / Local)</th>
+              <th scope="col" class="py-3 px-4">Recipient</th>
+              <th scope="col" class="py-3 px-4">Campaign</th>
+              <th scope="col" class="py-3 px-4">Device / Client</th>
+              <th scope="col" class="py-3 px-4">IP Address</th>
+              <th scope="col" class="py-3 px-4 text-right">Details</th>
+            </tr>
+          </thead>
+          <tbody id="eventsTableBody" class="divide-y divide-slate-800/60 font-mono">
+            <tr>
+              <td colspan="6" class="py-8 text-center text-slate-500 font-sans">
+                Loading live tracking records...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination / Footer Info -->
+      <div class="flex items-center justify-between text-xs text-slate-500 pt-2 font-sans">
+        <div id="tableRecordCount">Showing 0 events</div>
+        <div class="text-[11px]">Exact client IP & proxy detection recorded in SQLite</div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Details Modal -->
+  <div id="detailsModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="text-sm font-semibold text-white">Full Tracking Header Details</h3>
+        <button onclick="closeModal()" class="text-slate-400 hover:text-white p-1 rounded-lg">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="mt-4 space-y-3 font-mono text-xs">
+        <div>
+          <span class="text-slate-500 block text-[11px] uppercase">Timestamp</span>
+          <span id="modalTimestamp" class="text-slate-200"></span>
+        </div>
+        <div>
+          <span class="text-slate-500 block text-[11px] uppercase">Recipient & Campaign</span>
+          <span id="modalMeta" class="text-indigo-300"></span>
+        </div>
+        <div>
+          <span class="text-slate-500 block text-[11px] uppercase">Client IP</span>
+          <span id="modalIp" class="text-emerald-400"></span>
+        </div>
+        <div>
+          <span class="text-slate-500 block text-[11px] uppercase">Client & OS Classification</span>
+          <span id="modalClient" class="text-slate-200"></span>
+        </div>
+        <div>
+          <span class="text-slate-500 block text-[11px] uppercase">Raw User-Agent String</span>
+          <pre id="modalUserAgent" class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-[11px] text-slate-300 whitespace-pre-wrap break-all select-all"></pre>
+        </div>
+        <div id="modalRefererContainer">
+          <span class="text-slate-500 block text-[11px] uppercase">Referer Header</span>
+          <span id="modalReferer" class="text-slate-400 break-all"></span>
+        </div>
+      </div>
+      <div class="mt-5 text-right">
+        <button onclick="closeModal()" class="px-4 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let allEvents = [];
+    let refreshTimer = null;
+
+    // Initialize Base URL
+    document.addEventListener("DOMContentLoaded", () => {
+      resetBaseUrl();
+      fetchData();
+      updateRefreshTimer();
+    });
+
+    function resetBaseUrl() {
+      const origin = window.location.origin;
+      document.getElementById('inputBaseUrl').value = origin;
+      updateGeneratedCode();
+    }
+
+    function updateGeneratedCode() {
+      let baseUrl = document.getElementById('inputBaseUrl').value.trim();
+      if (!baseUrl) {
+        baseUrl = window.location.origin;
+      }
+      // Strip trailing slash
+      baseUrl = baseUrl.replace(/\/+$/, '');
+
+      const campaign = encodeURIComponent(document.getElementById('inputCampaign').value.trim() || 'default');
+      const recipient = encodeURIComponent(document.getElementById('inputRecipient').value.trim() || 'anonymous');
+      const subject = encodeURIComponent(document.getElementById('inputSubject').value.trim());
+
+      let pixelUrl = `${baseUrl}/tracker.gif?cid=${campaign}&recipient=${recipient}`;
+      if (subject) {
+        pixelUrl += `&subject=${subject}`;
+      }
+
+      // 1. HTML Image tag
+      const htmlTag = `<!-- OpenPixel Email Tracker -->\n<img src="${pixelUrl}" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0;outline:none;" />`;
+      document.getElementById('htmlSnippet').textContent = htmlTag;
+
+      // 2. Markdown tag
+      const mdTag = `![](${pixelUrl})`;
+      document.getElementById('markdownSnippet').textContent = mdTag;
+
+      // 3. Direct URL
+      document.getElementById('urlSnippet').textContent = pixelUrl;
+    }
+
+    async function fetchData() {
+      const icon = document.getElementById('refreshIcon');
+      if (icon) icon.classList.add('rotate-180');
+
+      try {
+        const [statsRes, eventsRes] = await Promise.all([
+          fetch('/api/stats'),
+          fetch('/api/events')
+        ]);
+
+        if (statsRes.ok) {
+          const stats = await statsRes.json();
+          document.getElementById('metricTotalOpens').textContent = stats.total_opens.toLocaleString();
+          document.getElementById('metricUniqueRecipients').textContent = stats.unique_recipients.toLocaleString();
+          document.getElementById('metricCampaigns').textContent = stats.unique_campaigns.toLocaleString();
+          document.getElementById('metricOpens24h').textContent = stats.opens_last_24h.toLocaleString();
+
+          // Populate campaigns dropdown filter
+          updateCampaignFilter(stats.campaign_list || []);
+        }
+
+        if (eventsRes.ok) {
+          allEvents = await eventsRes.json();
+          renderTable();
+        }
+      } catch (err) {
+        console.error("Error fetching tracker data:", err);
+      } finally {
+        if (icon) {
+          setTimeout(() => icon.classList.remove('rotate-180'), 500);
+        }
+      }
+    }
+
+    function updateCampaignFilter(campaigns) {
+      const select = document.getElementById('filterCampaign');
+      const currentVal = select.value;
+      let html = '<option value="">All Campaigns</option>';
+      campaigns.forEach(c => {
+        html += `<option value="${c}" ${c === currentVal ? 'selected' : ''}>${c}</option>`;
+      });
+      select.innerHTML = html;
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById('eventsTableBody');
+      const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
+      const campaignFilter = document.getElementById('filterCampaign').value;
+
+      const filtered = allEvents.filter(ev => {
+        if (campaignFilter && ev.campaign_id !== campaignFilter) return false;
+        if (!searchTerm) return true;
+        return (
+          (ev.recipient && ev.recipient.toLowerCase().includes(searchTerm)) ||
+          (ev.campaign_id && ev.campaign_id.toLowerCase().includes(searchTerm)) ||
+          (ev.ip_address && ev.ip_address.toLowerCase().includes(searchTerm)) ||
+          (ev.client_type && ev.client_type.toLowerCase().includes(searchTerm)) ||
+          (ev.os_name && ev.os_name.toLowerCase().includes(searchTerm)) ||
+          (ev.browser_name && ev.browser_name.toLowerCase().includes(searchTerm))
+        );
+      });
+
+      document.getElementById('tableRecordCount').textContent = `Showing ${filtered.length} of ${allEvents.length} recorded opens`;
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="py-12 text-center text-slate-500 font-sans">
+              No tracking events found matching criteria. Send an email or trigger a test ping to see events appear live!
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      let rows = '';
+      filtered.forEach((ev, idx) => {
+        const timeAgo = formatTimeAgo(ev.timestamp);
+        const fullTime = new Date(ev.timestamp).toLocaleString();
+
+        // Client badge coloring
+        let badgeColor = 'bg-slate-800 text-slate-300 border-slate-700';
+        if (ev.client_type.includes('Gmail')) {
+          badgeColor = 'bg-red-500/10 text-red-400 border-red-500/20';
+        } else if (ev.client_type.includes('Apple')) {
+          badgeColor = 'bg-sky-500/10 text-sky-400 border-sky-500/20';
+        } else if (ev.client_type.includes('Outlook')) {
+          badgeColor = 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+        } else if (ev.device_type === 'Mobile') {
+          badgeColor = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+        }
+
+        rows += `
+          <tr class="hover:bg-slate-800/40 transition group">
+            <td class="py-3 px-4 whitespace-nowrap text-slate-300">
+              <span class="font-medium">${timeAgo}</span>
+              <div class="text-[10px] text-slate-500">${fullTime}</div>
+            </td>
+            <td class="py-3 px-4 font-sans">
+              <span class="font-medium text-slate-100">${escapeHtml(ev.recipient)}</span>
+              ${ev.subject ? `<div class="text-[11px] text-slate-400 truncate max-w-xs font-mono">${escapeHtml(ev.subject)}</div>` : ''}
+            </td>
+            <td class="py-3 px-4">
+              <span class="px-2 py-0.5 rounded text-[11px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                ${escapeHtml(ev.campaign_id)}
+              </span>
+            </td>
+            <td class="py-3 px-4 font-sans">
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] border font-medium ${badgeColor}">
+                ${escapeHtml(ev.client_type)}
+              </span>
+              <div class="text-[11px] text-slate-400 mt-0.5 font-mono">
+                ${escapeHtml(ev.os_name)} &bull; ${escapeHtml(ev.browser_name)}
+              </div>
+            </td>
+            <td class="py-3 px-4 text-slate-400 whitespace-nowrap">
+              ${escapeHtml(ev.ip_address)}
+            </td>
+            <td class="py-3 px-4 text-right font-sans">
+              <button onclick="viewDetails(${ev.id})" class="text-xs text-indigo-400 hover:text-indigo-300 hover:underline">
+                Inspect
+              </button>
+            </td>
+          </tr>
+        `;
+      });
+
+      tbody.innerHTML = rows;
+    }
+
+    function viewDetails(id) {
+      const ev = allEvents.find(e => e.id === id);
+      if (!ev) return;
+
+      document.getElementById('modalTimestamp').textContent = `${new Date(ev.timestamp).toUTCString()} (Local: ${new Date(ev.timestamp).toLocaleString()})`;
+      document.getElementById('modalMeta').textContent = `Recipient: ${ev.recipient} | Campaign: ${ev.campaign_id}`;
+      document.getElementById('modalIp').textContent = ev.ip_address;
+      document.getElementById('modalClient').textContent = `${ev.client_type} (${ev.device_type} - ${ev.os_name} - ${ev.browser_name})`;
+      document.getElementById('modalUserAgent').textContent = ev.user_agent || 'None provided';
+      
+      const refContainer = document.getElementById('modalRefererContainer');
+      if (ev.referer) {
+        refContainer.classList.remove('hidden');
+        document.getElementById('modalReferer').textContent = ev.referer;
+      } else {
+        refContainer.classList.add('hidden');
+      }
+
+      document.getElementById('detailsModal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+      document.getElementById('detailsModal').classList.add('hidden');
+    }
+
+    async function testPixelLoad() {
+      const campaign = encodeURIComponent(document.getElementById('inputCampaign').value.trim() || 'test_ping');
+      const recipient = encodeURIComponent(document.getElementById('inputRecipient').value.trim() || 'self_test@local');
+      const subject = encodeURIComponent('Manual Test Ping');
+
+      try {
+        const res = await fetch(`/tracker.gif?cid=${campaign}&recipient=${recipient}&subject=${subject}&_t=${Date.now()}`);
+        if (res.ok) {
+          await fetchData();
+        }
+      } catch (err) {
+        console.error("Test ping failed:", err);
+      }
+    }
+
+    async function confirmClearLogs() {
+      if (confirm("Are you sure you want to clear all tracking records? This cannot be undone.")) {
+        try {
+          const res = await fetch('/api/clear', { method: 'POST' });
+          if (res.ok) {
+            await fetchData();
+          }
+        } catch (err) {
+          console.error("Failed to clear logs:", err);
+        }
+      }
+    }
+
+    function copyToClipboard(elementId, btnId) {
+      const text = document.getElementById(elementId).innerText || document.getElementById(elementId).textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById(btnId);
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = `
+          <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+          <span class="text-emerald-400">Copied!</span>
+        `;
+        setTimeout(() => {
+          btn.innerHTML = originalHtml;
+        }, 2000);
+      });
+    }
+
+    function updateRefreshTimer() {
+      if (refreshTimer) clearInterval(refreshTimer);
+      const interval = parseInt(document.getElementById('autoRefreshInterval').value);
+      if (interval > 0) {
+        refreshTimer = setInterval(fetchData, interval);
+      }
+    }
+
+    function formatTimeAgo(isoString) {
+      const date = new Date(isoString);
+      const seconds = Math.floor((new Date() - date) / 1000);
+      if (seconds < 5) return 'Just now';
+      if (seconds < 60) return `${seconds}s ago`;
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      return `${days}d ago`;
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+  </script>
+</body>
+</html>
